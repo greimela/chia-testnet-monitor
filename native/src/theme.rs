@@ -62,6 +62,11 @@ impl Theme {
     }
 }
 
+/// `font-variant-numeric: tabular-nums`: digits all one width, as the page sets almost everywhere.
+pub fn tnum() -> gpui_kit::FontFeatures {
+    gpui_kit::FontFeatures(std::sync::Arc::new(vec![("tnum".to_string(), 1)]))
+}
+
 pub fn with_alpha(mut c: Hsla, a: f32) -> Hsla {
     c.a = a;
     c

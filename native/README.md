@@ -15,6 +15,10 @@ cargo run --release -- --url http://127.0.0.1:9000 --theme dark --size 1200x1000
 Options: `--url` (default `http://127.0.0.1:8899`), `--theme light|dark` (default: follow the system),
 `--size WxH`. Closing the window quits; the server keeps running.
 
+On macOS the app switches off the system's "font smoothing" (it sets `AppleFontSmoothing` to 0 in its own
+preferences domain), because that thickens light-on-dark text and makes it look heavier than the web page.
+`--system-text` keeps the system behaviour. `CHIA_CONFETTI_DEMO=1` fires the win confetti four seconds after launch.
+
 ### macOS app
 
 ```sh

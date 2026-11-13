@@ -43,7 +43,40 @@ fn server_url() -> String {
         .unwrap_or_else(|| "http://127.0.0.1:8899".into())
 }
 
+/// macOS thickens light-on-dark glyphs ("font smoothing"); browsers don't, so the page looks lighter.
+/// GPUI skips the thickening when this app's `AppleFontSmoothing` preference is 0.
+/// `--system-text` keeps the system's behaviour.
+#[cfg(target_os = "macos")]
+fn match_browser_text_weight() {
+    use core_foundation_sys::base::{CFRelease, kCFAllocatorDefault};
+    use core_foundation_sys::number::{CFNumberCreate, kCFNumberSInt32Type};
+    use core_foundation_sys::preferences::{
+        CFPreferencesSetAppValue, kCFPreferencesCurrentApplication,
+    };
+    use core_foundation_sys::string::{CFStringCreateWithCString, kCFStringEncodingUTF8};
+    unsafe {
+        let key = CFStringCreateWithCString(
+            kCFAllocatorDefault,
+            c"AppleFontSmoothing".as_ptr(),
+            kCFStringEncodingUTF8,
+        );
+        let zero: i32 = 0;
+        let value = CFNumberCreate(
+            kCFAllocatorDefault,
+            kCFNumberSInt32Type,
+            (&raw const zero).cast(),
+        );
+        CFPreferencesSetAppValue(key, value.cast(), kCFPreferencesCurrentApplication);
+        CFRelease(key.cast());
+        CFRelease(value.cast());
+    }
+}
+
 fn main() {
+    #[cfg(target_os = "macos")]
+    if !std::env::args().any(|a| a == "--system-text") {
+        match_browser_text_weight();
+    }
     let url = server_url();
     gpui_kit::application().with_assets(Assets).run(move |cx| {
         let fonts = theme::FONT_FILES

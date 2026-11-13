@@ -78,6 +78,14 @@ impl Monitor {
         })
         .detach();
 
+        if std::env::var_os("CHIA_CONFETTI_DEMO").is_some() {
+            cx.spawn(async move |this, cx| {
+                cx.background_executor().timer(Duration::from_secs(4)).await;
+                let _ = this.update(cx, |m, cx| m.celebrate(1.0, cx));
+            })
+            .detach();
+        }
+
         let confetti_on = std::fs::read_to_string(pref_path())
             .map(|s| s.trim() != "off")
             .unwrap_or(true);
@@ -149,13 +157,7 @@ impl Monitor {
             let _ = win.update(cx, |_, win, cx| {
                 let vp = win.viewport_size();
                 confetti.update(cx, |c, cx| {
-                    c.burst(
-                        &theme,
-                        vp.width.into(),
-                        vp.height.into(),
-                        if scale >= 1.0 { 60 } else { 22 },
-                        scale >= 1.0,
-                    );
+                    c.burst(&theme, vp.width.into(), vp.height.into(), scale >= 1.0);
                     cx.notify();
                 });
             });
@@ -415,6 +417,7 @@ impl Monitor {
             .gap_x(px(20.))
             .gap_y(px(6.))
             .text_size(px(14.))
+            .line_height(px(21.))
             .font_family(SEMI)
             .children(items.into_iter().map(|(lvl, text, _)| {
                 let (c, mark) = if lvl == 2 {
@@ -681,6 +684,8 @@ impl Monitor {
                     )
                     .child(
                         div()
+                            .relative()
+                            .top(px(9.))
                             .ml(px(6.))
                             .font_family(MED)
                             .text_size(px(20.))
@@ -768,18 +773,24 @@ impl Monitor {
                             .flex_col()
                             .gap(px(6.))
                             .child(segs)
-                            .child(div().text_size(px(14.)).text_color(t.ink2).child(format!(
-                                "{} of {} done · {} · started {}{} · {}",
-                                j.done,
-                                j.total,
-                                step,
-                                clock(j.started),
-                                per.map_or(String::new(), |p| format!(
-                                    " · {} per plot",
-                                    duration_str(Some(p))
-                                )),
-                                left
-                            ))),
+                            .child(
+                                div()
+                                    .text_size(px(14.))
+                                    .line_height(px(21.))
+                                    .text_color(t.ink2)
+                                    .child(format!(
+                                        "{} of {} done · {} · started {}{} · {}",
+                                        j.done,
+                                        j.total,
+                                        step,
+                                        clock(j.started),
+                                        per.map_or(String::new(), |p| format!(
+                                            " · {} per plot",
+                                            duration_str(Some(p))
+                                        )),
+                                        left
+                                    )),
+                            ),
                     ),
             );
         }
@@ -878,6 +889,7 @@ impl Monitor {
                 div()
                     .font_family(MED)
                     .text_size(px(14.))
+                    .line_height(px(21.))
                     .text_color(t.ink2)
                     .ml(px(4.))
                     .child(x.to_string())
@@ -981,6 +993,7 @@ impl Monitor {
                         .border_t_1()
                         .border_color(t.rule)
                         .text_size(px(14.))
+                        .line_height(px(21.))
                         .child(
                             div()
                                 .w(px(62.))
@@ -1053,19 +1066,25 @@ impl Monitor {
                 d.child(c)
             }
         };
-        let mut tbl = div().flex().flex_col().text_size(px(14.)).w_full().child(
-            div()
-                .flex()
-                .flex_row()
-                .border_t_1()
-                .border_color(t.rule)
-                .children(
-                    heads
-                        .iter()
-                        .enumerate()
-                        .map(|(i, h)| cell(i, div().child(h.to_string()), true)),
-                ),
-        );
+        let mut tbl = div()
+            .flex()
+            .flex_col()
+            .text_size(px(14.))
+            .line_height(px(21.))
+            .w_full()
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .border_t_1()
+                    .border_color(t.rule)
+                    .children(
+                        heads
+                            .iter()
+                            .enumerate()
+                            .map(|(i, h)| cell(i, div().child(h.to_string()), true)),
+                    ),
+            );
         for r in rows {
             tbl = tbl.child(
                 div()
@@ -1237,6 +1256,7 @@ impl Monitor {
                 .child(
                     div()
                         .text_size(px(14.))
+                        .line_height(px(21.))
                         .mt(px(12.))
                         .max_w(px(760.))
                         .child(note),
@@ -1622,6 +1642,7 @@ impl Render for Monitor {
             .bg(t.paper)
             .text_color(t.ink)
             .font_family(REG)
+            .font_features(tnum())
             .text_size(px(15.))
             .line_height(px(22.5))
             .child(div().id("page").size_full().overflow_y_scroll().child(page))

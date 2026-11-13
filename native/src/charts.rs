@@ -623,6 +623,6 @@ pub fn lookup_strip(vals: Vec<f64>, avg: f64, t: Theme, tip: Entity<Tip>) -> imp
         },
     )
     .w_full()
-    .h(px(30.))
+    .h(px(26.))
     .mt(px(8.))
 }

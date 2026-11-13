@@ -2,7 +2,7 @@
 
 use gpui_kit::*;
 
-use crate::theme::{REG, Theme};
+use crate::theme::{REG, Theme, tnum};
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum TextAnchor {
@@ -29,7 +29,10 @@ pub fn text(
     }
     let run = TextRun {
         len: s.len(),
-        font: font(family),
+        font: Font {
+            features: tnum(),
+            ..font(family)
+        },
         color,
         background_color: None,
         underline: None,
@@ -60,7 +63,10 @@ pub fn text(
 pub fn text_width(win: &mut Window, s: &str, family: &'static str, size: f32) -> f32 {
     let run = TextRun {
         len: s.len(),
-        font: font(family),
+        font: Font {
+            features: tnum(),
+            ..font(family)
+        },
         color: black(),
         background_color: None,
         underline: None,
