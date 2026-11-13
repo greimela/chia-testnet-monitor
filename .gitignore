@@ -1,3 +1,10 @@
 __pycache__/
 *.log
 .DS_Store
+strength-stats-*.json
+
+# pos2.ps1 (Windows): the chia build, plots and selected testnet live next to it
+chia-blockchain/
+plots/
+network.txt
+fingerprint.txt

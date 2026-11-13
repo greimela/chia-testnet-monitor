@@ -106,7 +106,7 @@ dl.facts i.sep { margin: 0 10px; color: var(--ink-3); font-style: normal; }
 .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 8px; }
 
 /* Lower: chart spans two columns, events and peers sit under Rewards */
-.lower { padding: 40px 0 64px; }
+.lower { padding: 40px 0; }
 .lower { align-items: stretch; }
 .side { display: grid; grid-template-rows: auto minmax(0, 1fr); }
 .side .feed { contain: size; max-height: none; }
@@ -136,6 +136,32 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th { text-align: left; font-weight: 500; color: var(--ink-3); padding: 7px 12px 7px 0; border-top: 1px solid var(--rule); }
 td { padding: 7px 12px 7px 0; border-top: 1px solid var(--rule); font-variant-numeric: tabular-nums; }
 th:last-child, td:last-child { text-align: right; padding-right: 0; }
+
+/* Plotting: one row per running plotter, a segment per plot (hidden when nothing is plotting) */
+.plotting { padding: 0 0 24px; }
+.plotting:empty { display: none; }
+.job { display: grid; grid-template-columns: 124px minmax(0, 1fr); column-gap: 24px; row-gap: 6px; align-items: center; padding: 6px 0; }
+.job dt { color: var(--ink-3); }
+.segs { display: flex; gap: 3px; height: 12px; }
+.segs i { flex: 1; border-radius: 2px; background: var(--faint); }
+.segs i.now { background: repeating-linear-gradient(135deg, var(--c) 0 4px, transparent 4px 8px); animation: breathe 2.6s ease-in-out infinite; }
+.segs i.done { background: var(--c); }
+@media (prefers-reduced-motion: reduce) { .segs i.now { animation: none; } }
+.job p { grid-column: 2; color: var(--ink-2); font-size: 14px; font-variant-numeric: tabular-nums; }
+.plotting .warn { color: var(--warn); font-weight: 600; margin-top: 8px; }
+
+/* Plot strength: filter passes, proofs and wins per strength */
+.strength { padding: 16px 0 40px; }
+.strength .scroll, .peers .scroll { overflow-x: auto; }
+.strength .sub, .peers .sub { color: var(--ink-3); }
+.strength td.off { color: var(--warn); }
+.strength .note { color: var(--ink-2); font-size: 14px; margin-top: 12px; max-width: 760px; }
+.strength .note.warn { color: var(--warn); font-weight: 600; }
+.strength .note.ok::before { content: "✓ "; color: var(--v2); font-weight: 700; }
+
+/* Peers: every connection the full node has, full nodes first */
+.peers { padding: 16px 0 64px; }
+.peers td.behind { color: var(--warn); }
 
 #tip { position: fixed; z-index: 10; pointer-events: none; background: var(--ink); color: var(--paper); border-radius: 6px; padding: 7px 10px; font-size: 13px; line-height: 1.4; white-space: pre-line; max-width: 260px; opacity: 0; }
 #tip b { display: block; font-weight: 650; }
@@ -174,6 +200,7 @@ th:last-child, td:last-child { text-align: right; padding-right: 0; }
     <div id="fig-network"></div>
     <div id="fig-wallet"></div>
   </section>
+  <section class="plotting" id="plotting" aria-label="Plotting"></section>
   <section class="cols lower">
     <div class="span2">
       <div class="head"><h2>Plots passing the filter</h2><span class="key"><span><span style="color:var(--v1)">◆</span> v1 proof</span><span><span style="color:var(--v2)">◆</span> v2 quality</span></span></div>
@@ -184,6 +211,15 @@ th:last-child, td:last-child { text-align: right; padding-right: 0; }
       <div class="head"><h2>Events</h2></div>
       <ol class="feed" id="feed"></ol>
     </div>
+  </section>
+  <section class="strength" aria-labelledby="strength-h">
+    <div class="head"><h2 id="strength-h" data-tip-title="Plot strength" data-tip="Each step up in strength should halve how often a plot passes the filter and make each pass twice as likely to find a proof, so proofs and wins per GB-day should stay level across strengths. Plots above the maximum strength are skipped until their block.">Plot strength</h2><span class="key" id="strength-key"></span></div>
+    <div class="scroll" id="strength"></div>
+    <div id="strength-notes"></div>
+  </section>
+  <section class="peers" aria-labelledby="peers-h">
+    <div class="head"><h2 id="peers-h">Peers</h2><span class="key" id="peers-key"></span></div>
+    <div class="scroll" id="peers"></div>
   </section>
 </main>
 <div id="tip" role="tooltip"></div>
@@ -505,20 +541,180 @@ function checkForWin() {
   const complete = state.node && state.chain.count >= state.node.height + 1;
   if (!complete) { lastWins = null; return; }
   const wins = state.chain.ours.length;
-  if (lastWins != null && wins > lastWins && confettiOn) celebrate(1);
+  if (lastWins != null && wins > lastWins) {
+    if (confettiOn) celebrate(1);
+    wonAt = { height: state.chain.ours[wins - 1], t: Date.now() };
+  }
   lastWins = wins;
+}
+
+/* ---------- plotting ---------- */
+function renderPlotting() {
+  const P = state.plotting;
+  if (!P) { $("plotting").innerHTML = ""; return; }
+  const now = state.now;
+  const jobs = P.jobs.map((j) => {
+    const segs = Array.from({ length: j.total }, (_, i) => `<i class="${i < j.done ? "done" : i === j.done ? "now" : ""}"></i>`).join("");
+    const per = j.done ? (now - j.started) / j.done : null;
+    const left = per ? `about ${duration(per * (j.total - j.done))} left` : "timing after the first plot";
+    const step = j.done >= j.total ? "finishing up" : `plot ${j.done + 1}${j.phase ? `, phase ${j.phase} of 4` : ""}`;
+    return `<div class="job"><dt><i class="sw" style="background:var(--${j.kind})"></i>${j.kind}${j.k ? ` k${esc(j.k)}` : ""}</dt>
+      <div class="segs" style="--c:var(--${j.kind})" role="img" aria-label="${j.done} of ${j.total} plots done">${segs}</div>
+      <p>${j.done} of ${j.total} done · ${step} · started ${clock(j.started)}${per ? ` · ${duration(per)} per plot` : ""} · ${left}</p></div>`;
+  }).join("");
+  const d = P.on_disk;
+  const waiting = P.not_loaded ? `<p class="warn">▲ ${P.not_loaded} finished plot${P.not_loaded === 1 ? " is" : "s are"} waiting for the harvester to load ${P.not_loaded === 1 ? "it" : "them"}. It rescans every couple of minutes.</p>` : "";
+  if (!P.jobs.length && !P.not_loaded) { $("plotting").innerHTML = ""; return; }
+  $("plotting").innerHTML = `<div class="head"><h2>Plotting</h2><span class="key">${fmt(d.v1)} v1 and ${fmt(d.v2)} v2 plots on disk</span></div>
+    ${jobs || `<p class="empty">No plots being created right now.</p>`}${waiting}`;
+}
+
+/* ---------- plot strength ---------- */
+function renderStrength() {
+  const S = state.strength;
+  if (!S) return;
+  $("strength-key").textContent = `Counting since ${new Date(S.since * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} · max strength now ${S.max_strength}`;
+  const perGbDay = (n, gbSps) => gbSps > 0 ? (n / gbSps * S.sps_per_day).toFixed(2) : "–";
+  const rows = S.rows.map((r) => {
+    const label = r.cls === "v1" ? `<i class="sw" style="background:var(--v1)"></i>v1` : `<i class="sw" style="background:var(--v2)"></i>Strength ${r.cls.slice(1)}`;
+    let status;
+    if (r.cls === "v1") status = r.state === "retired" ? `<td class="sub">Retired at ${fmt(r.until)}</td>` : `<td>Farming until ${fmt(r.until)}</td>`;
+    else if (r.state === "farming") status = `<td>Farming</td>`;
+    else status = `<td class="sub">From block ${fmt(r.unlock)}${r.unlock === S.fork ? " (fork)" : ""}</td>`;
+    const filter = r.bits == null ? "–" : `1 in ${fmt(2 ** r.bits)}`;
+    const ratio = r.expected >= 1 ? r.passes / r.expected : null;
+    const off = ratio != null && r.expected >= 20 && Math.abs(ratio - 1) > 3 / Math.sqrt(r.expected);  // > 3 sigma
+    const passes = r.checks ? `<td class="${off ? "off" : ""}">${fmt(r.passes)} <span class="sub">of ${r.expected.toFixed(1)} expected${ratio != null ? ` (${Math.round(ratio * 100)}%)` : ""}</span></td>` : `<td class="sub">–</td>`;
+    const locked = r.locked ? ` <span class="sub">(${fmt(r.locked)} skipped while locked)</span>` : "";
+    return `<tr><td>${label}</td><td>${fmt(r.plots)} <span class="sub">${bytesStr(r.gb * 1e9)}</span></td>${status}<td>${filter}</td>
+      <td>${fmt(r.checks)}${locked}</td>${passes}<td>${fmt(r.proofs)}</td><td>${perGbDay(r.proofs, r.gb_sps)}</td><td>${fmt(r.wins)}</td></tr>`;
+  }).join("");
+  $("strength").innerHTML = `<table><thead><tr><th>Plots</th><th>Count</th><th>Status</th><th>Filter now</th><th>Plot checks</th>
+    <th>Passed filter</th><th>Proofs</th><th>Proofs per GB-day</th><th>Wins</th></tr></thead><tbody>${rows}</tbody></table>`;
+
+  const C = S.check;
+  let check;
+  if (C.mismatch_count) {
+    const m = C.mismatches[C.mismatches.length - 1];
+    check = `<p class="note warn">▲ Filter counts differ from the harvester's in ${fmt(C.mismatch_count)} of ${fmt(C.compared)} sub-slots (latest ${esc(m.challenge)}: ${m.ours} here, ${m.harvester} from the harvester). The pass counts above may be off.</p>`;
+  } else if (C.compared) {
+    check = `<p class="note ok">Filter passes match the harvester's own count in all ${fmt(C.compared)} finished sub-slot${C.compared === 1 ? "" : "s"} checked.</p>`;
+  } else {
+    check = `<p class="note">Filter passes are checked against the harvester's count once a full sub-slot (about 10 minutes) has been seen.</p>`;
+  }
+  $("strength-notes").innerHTML = check;
+}
+
+/* ---------- peers ---------- */
+const TYPE_ORDER = ["full node", "farmer", "wallet", "harvester", "timelord", "introducer"];
+function since(t) {
+  const sec = state.now - t;
+  return sec < 60 ? "just now" : duration(sec);
+}
+// Recent byte counts per connection, to show current traffic averaged over the last ~10 s.
+const peerSamples = new Map();
+function peerRates(p) {
+  const key = `${p.host}|${p.port}|${p.type}|${p.since}`;
+  const list = peerSamples.get(key) || [];
+  if (!list.length || list[list.length - 1].t !== state.now) list.push({ t: state.now, up: p.written, down: p.read });
+  while (list.length > 2 && state.now - list[1].t >= 10) list.shift();
+  peerSamples.set(key, list);
+  const a = list[0], b = list[list.length - 1], dt = b.t - a.t;
+  return dt >= 3 ? { up: (b.up - a.up) / dt, down: (b.down - a.down) / dt } : null;
+}
+const rateStr = (r) => r == null ? "" : ` <span class="sub">· ${r < 1 ? "idle" : `${bytesStr(r)}/s`}</span>`;
+function renderPeers() {
+  const peers = [...state.peers].sort((a, b) =>
+    (TYPE_ORDER.indexOf(a.type) + 1 || 99) - (TYPE_ORDER.indexOf(b.type) + 1 || 99) || (b.height ?? -1) - (a.height ?? -1) || a.since - b.since);
+  const counts = {};
+  for (const p of peers) counts[p.type] = (counts[p.type] || 0) + 1;
+  $("peers-key").textContent = peers.length
+    ? `${fmt(peers.length)} connection${peers.length === 1 ? "" : "s"}: ` + Object.entries(counts).map(([t, n]) => `${n} ${t}${n === 1 ? "" : "s"}`).join(", ")
+    : "";
+  if (!peers.length) { $("peers").innerHTML = `<p class="empty">${state.services.node ? "No connections yet." : "The full node isn't running."}</p>`; return; }
+  const ours = state.node?.height;
+  const live = new Set();
+  const rows = peers.map((p) => {
+    const rate = peerRates(p);
+    live.add(`${p.host}|${p.port}|${p.type}|${p.since}`);
+    const lag = p.height != null && ours != null ? ours - p.height : 0;
+    const height = p.height == null ? `<td class="sub">–</td>`
+      : `<td class="${lag > 3 ? "behind" : ""}">${fmt(p.height)}${lag > 3 ? ` <span class="sub">(${fmt(lag)} behind)</span>` : ""}</td>`;
+    return `<tr><td>${esc(p.host.includes(":") ? `[${p.host}]` : p.host)}${p.port ? `<span class="sub">:${esc(p.port)}</span>` : ""}</td><td>${esc(p.type)}</td>${height}
+      <td>${bytesStr(p.written)}${rateStr(rate?.up)}</td><td>${bytesStr(p.read)}${rateStr(rate?.down)}</td><td>${since(p.since)}</td></tr>`;
+  }).join("");
+  for (const key of peerSamples.keys()) if (!live.has(key)) peerSamples.delete(key);
+  $("peers").innerHTML = `<table><thead><tr><th>IP</th><th>Type</th><th>Height</th><th>Uploaded</th><th>Downloaded</th><th>Connected for</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
+/* ---------- browser tab: a status favicon, and a title that's quiet until something changes ---------- */
+const TAB_COLORS = { ok: "#16a34a", warn: "#d97706", crit: "#dc2626", win: "#ca8a04" };
+const WIN_SHOWN_MS = 5 * 60 * 1000;
+let wonAt = null, badSince = null, tabKey = "";
+const short = (n) => n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n);
+function tabStatus() {
+  const s = state, ago = () => duration((Date.now() - badSince) / 1000).replace(" min", "m").replace(" hours", "h").replace(" days", "d");
+  if (Date.now() / 1000 - lastOk >= 8) return ["crit", `Dashboard down ${duration(Date.now() / 1000 - lastOk).replace(" min", "m")}`];
+  const sv = s.services, f = s.farm;
+  let bad = null;
+  if (!sv.node || !s.node) bad = ["crit", "Offline"];
+  else if (!sv.farmer) bad = ["crit", "Farmer off"];
+  else if (f?.by_version?.v2.plots && !sv.solver) bad = ["crit", "Solver off"];
+  if (bad) { badSince ??= Date.now(); return [bad[0], `${bad[1]} ${ago()}`]; }
+  badSince = null;
+  if (!s.node.synced) {
+    const pct = s.node.sync_tip ? Math.floor(100 * s.node.height / s.node.sync_tip) : null;
+    return ["warn", pct != null ? `Syncing ${pct}%` : "Not synced"];
+  }
+  if (!s.peers.some((p) => p.type === "full node")) return ["warn", "No peers"];
+  if (!f || !f.plots) return ["warn", "No plots"];
+  if (wonAt && Date.now() - wonAt.t < WIN_SHOWN_MS) return ["win", `Won ${fmt(wonAt.height)}`];
+  return ["ok", null];
+}
+function nextMilestone() {
+  // Before the fork, the fork; then each strength unlock in turn; then nothing.
+  const S = state.strength, h = state.node?.height;
+  if (!S || h == null) return null;
+  if (h < S.fork) return `fork in ${short(S.fork - h)}`;
+  const next = S.rows.filter((r) => r.cls !== "v1" && r.unlock > h).sort((a, b) => a.unlock - b.unlock)[0];
+  return next ? `${next.cls} in ${short(next.unlock - h)}` : null;
+}
+function renderTab() {
+  if (!state?.ready) return;
+  const [level, event] = tabStatus();
+  const milestone = level === "ok" ? nextMilestone() : null;
+  const title = event ? `${event} · Testnet monitor` : milestone ? `Testnet monitor · ${milestone}` : `Testnet monitor · ${state.network}`;
+  if (document.title !== title) document.title = title;
+  if (level === tabKey) return;
+  tabKey = level;
+  // Our bar logo, with a status dot in the corner whenever something needs attention.
+  const c = document.createElement("canvas"); c.width = c.height = 64;
+  const g = c.getContext("2d"), u = 64 / 26;
+  [0, 0.25, 0.5, 0.75, 1].forEach((f, i) => {
+    const x = (i * 5 + 1) * u, w = 3.4 * u, top = 3 * u, h = 20 * u, gH = h * f, bH = h - gH, gap = bH && gH ? 0.8 * u : 0;
+    g.fillStyle = "#3d6bb3"; if (bH) { g.beginPath(); g.roundRect(x, top, w, bH, u); g.fill(); }
+    g.fillStyle = "#2e9b4e"; if (gH) { g.beginPath(); g.roundRect(x, top + bH + gap, w, gH - gap, u); g.fill(); }
+  });
+  if (level !== "ok") {
+    g.fillStyle = "#fff"; g.beginPath(); g.arc(48, 48, 16, 0, 2 * Math.PI); g.fill();
+    g.fillStyle = TAB_COLORS[level]; g.beginPath(); g.arc(48, 48, 12, 0, 2 * Math.PI); g.fill();
+  }
+  let link = document.querySelector("link[rel=icon]");
+  if (!link) { link = document.createElement("link"); link.rel = "icon"; document.head.append(link); }
+  link.href = c.toDataURL("image/png");
 }
 
 /* ---------- loop ---------- */
 function render() {
   if (!state?.ready) return;
   $("network").textContent = state.network;
-  document.title = `Testnet monitor · ${state.network}`;
-  renderHealth(); renderHero(); renderFigures(); renderSp(); renderFeed(); checkForWin();
+  renderHealth(); renderHero(); renderFigures(); renderPlotting(); renderSp(); renderFeed(); renderStrength(); renderPeers(); checkForWin();
+  renderTab();
 }
 async function poll() {
   try { const r = await fetch("/api/state", { cache: "no-store" }); state = await r.json(); lastOk = Date.now() / 1000; render(); }
-  catch { if (state) renderHealth(); }
+  catch { if (state) { renderHealth(); renderTab(); } }
 }
 
 const tip = $("tip");
