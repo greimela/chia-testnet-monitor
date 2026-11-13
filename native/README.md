@@ -15,6 +15,22 @@ cargo run --release -- --url http://127.0.0.1:9000 --theme dark --size 1200x1000
 Options: `--url` (default `http://127.0.0.1:8899`), `--theme light|dark` (default: follow the system),
 `--size WxH`. Closing the window quits; the server keeps running.
 
+### macOS app
+
+```sh
+./bundle.sh --open        # builds "Testnet Monitor.app" next to the cargo target directory
+```
+
+It builds a release binary, wraps it in an `.app` with the icon (`macos/icon.svg`, rendered to
+`macos/icon-1024.png`; the script makes the `.icns`), and signs it ad hoc, which is enough to run it on the Mac
+that built it. Copy it to `/Applications` if you like. Giving it to other Macs would need a Developer ID
+signature and notarization, which the script doesn't do.
+
+A Finder launch can't pass `--url`. To point the app at a server that isn't on `127.0.0.1:8899`, put the URL on the
+first line of `~/.chia-monitor-native-url` (or set `CHIA_MONITOR_URL` when running the binary directly).
+Order of precedence: `--url`, `CHIA_MONITOR_URL`, that file, the default. With no server reachable the window
+says so and keeps retrying.
+
 **Requirements:** Rust 1.85 or newer. On macOS, Xcode with the Metal toolchain
 (`xcodebuild -downloadComponent MetalToolchain` if `metal` is missing).
 **Platforms:** developed and tested on macOS (Apple silicon). Windows and Linux use GPUI's

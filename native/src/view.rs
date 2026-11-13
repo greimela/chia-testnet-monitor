@@ -20,6 +20,7 @@ type HealthItem = (u8, String, Option<(String, String)>);
 pub const POLL: Duration = Duration::from_secs(2);
 
 pub struct Monitor {
+    endpoint: String,
     snap: Arc<Snapshot>,
     last_ok: f64,
     dark: bool,
@@ -81,6 +82,7 @@ impl Monitor {
             .map(|s| s.trim() != "off")
             .unwrap_or(true);
         Self {
+            endpoint: url,
             snap: Arc::new(Snapshot::default()),
             last_ok: 0.0,
             dark,
@@ -205,12 +207,13 @@ fn peer_key(p: &Peer) -> String {
     format!("{}|{}|{}|{}", p.host, p.port, p.kind, p.since)
 }
 
+pub fn home_file(name: &str) -> Option<std::path::PathBuf> {
+    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
+    Some(std::path::PathBuf::from(home).join(name))
+}
+
 fn pref_path() -> std::path::PathBuf {
-    let home = std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(std::path::PathBuf::from)
-        .unwrap_or_default();
-    home.join(".chia-monitor-native-confetti")
+    home_file(".chia-monitor-native-confetti").unwrap_or_default()
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1604,6 +1607,13 @@ impl Render for Monitor {
             }
             main = main.child(self.peers(&t));
             page = page.child(main);
+        } else {
+            page = page.child(wrap(pad).pt(px(34.)).child(
+                div().text_color(t.ink2).text_size(px(17.)).child(format!(
+                    "Waiting for the server at {}. Start server.py first.",
+                    self.endpoint
+                )),
+            ));
         }
 
         div()
