@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Testnet monitor</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%22-1%200%2026%2026%22%3E%3Crect%20x%3D%220%22%20y%3D%223%22%20width%3D%223.4%22%20height%3D%2220%22%20rx%3D%221%22%20fill%3D%22%233d6bb3%22/%3E%3Crect%20x%3D%225%22%20y%3D%223%22%20width%3D%223.4%22%20height%3D%2215.0%22%20rx%3D%221%22%20fill%3D%22%233d6bb3%22/%3E%3Crect%20x%3D%225%22%20y%3D%2218.8%22%20width%3D%223.4%22%20height%3D%224.2%22%20rx%3D%221%22%20fill%3D%22%232e9b4e%22/%3E%3Crect%20x%3D%2210%22%20y%3D%223%22%20width%3D%223.4%22%20height%3D%2210.0%22%20rx%3D%221%22%20fill%3D%22%233d6bb3%22/%3E%3Crect%20x%3D%2210%22%20y%3D%2213.8%22%20width%3D%223.4%22%20height%3D%229.2%22%20rx%3D%221%22%20fill%3D%22%232e9b4e%22/%3E%3Crect%20x%3D%2215%22%20y%3D%223%22%20width%3D%223.4%22%20height%3D%225.0%22%20rx%3D%221%22%20fill%3D%22%233d6bb3%22/%3E%3Crect%20x%3D%2215%22%20y%3D%228.8%22%20width%3D%223.4%22%20height%3D%2214.2%22%20rx%3D%221%22%20fill%3D%22%232e9b4e%22/%3E%3Crect%20x%3D%2220%22%20y%3D%223%22%20width%3D%223.4%22%20height%3D%2220%22%20rx%3D%221%22%20fill%3D%22%232e9b4e%22/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.js"></script>
+<style>
+:root {
+  color-scheme: light;
+  --paper: #f2f4ef; --band: #e5eae2; --ink: #13241a; --ink-2: #4c5b52; --ink-3: #75837a; --rule: #cfd8cd; --faint: #dbe2d8;
+  --v1: #3d6bb3; --v2: #2e9b4e; --yours: #b0457f; --warn: #a85a0c; --crit: #c23a3a;
+  --font: "Archivo", ui-sans-serif, system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --paper: #101813; --band: #16211a; --ink: #e4ebe3; --ink-2: #a7b4ab; --ink-3: #75847a; --rule: #2a382f; --faint: #1f2b23;
+    --v1: #5b86d0; --v2: #2fa457; --yours: #cf5f9b; --warn: #e39a3b; --crit: #e2625f;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #101813; --band: #16211a; --ink: #e4ebe3; --ink-2: #a7b4ab; --ink-3: #75847a; --rule: #2a382f; --faint: #1f2b23;
+  --v1: #5b86d0; --v2: #2fa457; --yours: #cf5f9b; --warn: #e39a3b; --crit: #e2625f;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--paper); }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 400 15px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
+@media (max-width: 600px) { .wrap { padding: 0 16px; } }
+.n { font-variant-numeric: tabular-nums; }
+h2 { margin: 0 0 14px; font-size: 15px; font-weight: 650; letter-spacing: 0; }
+p { margin: 0; }
+
+/* Top line: network name and service health */
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 28px; padding-top: 22px; padding-bottom: 18px; }
+/* Brand: a tiny block chart (bars shifting from v1 to v2), the name, and the network ID as a mono chip */
+.net { display: flex; align-items: center; gap: 12px; font-size: 18px; font-weight: 750; font-variation-settings: "wdth" 88; }
+.net .logo { flex: none; }
+.net .id { margin-left: 6px; padding: 3px 9px; border-radius: 6px; background: var(--band); color: var(--ink-2);
+  font: 450 13px/1.4 ui-monospace, "SF Mono", Menlo, monospace; }
+.health { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 0; padding: 0; list-style: none; font-size: 14px; font-weight: 600; }
+.health:empty { display: none; }
+.health li.warn { color: var(--warn); }
+.health li.crit { color: var(--crit); }
+.icon-btn { margin-left: auto; margin-right: -7px; width: 36px; height: 36px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--ink-3); cursor: pointer; }
+.icon-btn:hover { background: var(--band); }
+.icon-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.icon-btn[aria-pressed="true"] { color: var(--yours); }
+.icon-btn .slash { display: none; }
+.icon-btn[aria-pressed="false"] .slash { display: inline; }
+
+/* Hero: countdown over the chain ribbon */
+.hero { background: var(--band); padding: 34px 0 22px; }
+.hero-label { font-size: 19px; font-weight: 500; color: var(--ink-2); }
+.countdown { font-size: clamp(68px, 15vw, 156px); line-height: .9; font-weight: 780; font-variation-settings: "wdth" 66; letter-spacing: -.01em; font-variant-numeric: tabular-nums; margin: 6px 0 12px -4px; }
+.countdown .c { font-weight: 300; color: var(--ink-3); padding: 0 .02em; }
+.countdown .d { font-weight: 600; color: var(--ink-2); font-size: .5em; margin-right: .2em; }
+.hero-caption { font-size: 17px; color: var(--ink-2); }
+.hero-caption b { color: var(--ink); font-weight: 600; }
+.ribbon { margin-top: 30px; }
+.ribbon svg { display: block; overflow: visible; }
+.ribbon text { font: 500 13px var(--font); fill: var(--ink-2); }
+.ribbon text.strong { fill: var(--ink); font-weight: 650; }
+.ribbon text.region { font-size: 12.5px; fill: var(--ink-2); }
+.intro .bars rect { transform-box: fill-box; transform-origin: 50% 100%; animation: rise .7s cubic-bezier(.2, .7, .2, 1) both; animation-delay: calc(var(--i) * 3ms); }
+@keyframes rise { from { transform: scaleY(0); } }
+.edge { animation: breathe 2.6s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .intro .bars rect, .edge { animation: none; } }
+
+/* One grid below the hero: three equal columns, 48px gutters, shared by every block */
+.cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 48px; }
+.span2 { grid-column: span 2; }
+@media (max-width: 860px) { .cols { grid-template-columns: minmax(0, 1fr); row-gap: 40px; } .span2 { grid-column: auto; } }
+
+/* Every block heading sits on one 24px line with 16px below */
+.head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0 16px; min-height: 24px; margin-bottom: 16px; }
+.head h2 { margin: 0; line-height: 24px; }
+.key { display: flex; gap: 14px; font-size: 13.5px; line-height: 24px; color: var(--ink-2); }
+
+/* Figures: subgrid puts heading, big number and facts on shared rows across the three columns */
+.figures { grid-template-rows: auto auto auto; padding: 40px 0 16px; }
+.figures > div { display: grid; grid-row: span 3; grid-template-rows: subgrid; min-width: 0; }
+@media (max-width: 860px) { .figures > div { grid-row: auto; grid-template-rows: none; } }
+.bigrow { display: flex; align-items: flex-end; gap: 24px; margin-bottom: 20px; min-width: 0; }
+.big { font-size: 46px; line-height: 1; font-weight: 720; font-variation-settings: "wdth" 80; font-variant-numeric: tabular-nums; margin: 0; white-space: nowrap; }
+.big small { font-size: 20px; font-weight: 500; color: var(--ink-2); margin-left: 6px; font-variation-settings: "wdth" 100; }
+.spark { flex: 1; min-width: 0; height: 34px; overflow: visible; }
+/* Facts: the numbers are set like small figures, units and words stay quiet beside them */
+/* Facts as a ledger: label on the left, value on the panel's right edge, a hairline between rows */
+dl.facts { display: grid; grid-template-columns: minmax(0, 1fr) auto; margin: 0; align-self: start; font-size: 15px; }
+dl.facts dt, dl.facts dd { display: flex; align-items: baseline; min-height: 42px; padding: 8px 0; border-top: 1px solid var(--rule); }
+dl.facts dt { color: var(--ink-3); align-items: center; }
+dl.facts dd { margin: 0; justify-content: flex-end; white-space: nowrap; }
+dl.facts b { font-size: 18px; line-height: 1.4; font-weight: 680; font-variation-settings: "wdth" 82; font-variant-numeric: tabular-nums; color: var(--ink); }
+dl.facts span { color: var(--ink-2); margin-left: 4px; }
+dl.facts span:empty { margin: 0; }
+dl.facts i.sep { margin: 0 10px; color: var(--ink-3); font-style: normal; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 8px; }
+
+/* Lower: chart spans two columns, events and peers sit under Rewards */
+.lower { padding: 40px 0 64px; }
+.lower { align-items: stretch; }
+.side { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.side .feed { contain: size; max-height: none; }
+.feed li:last-child { border-bottom: 1px solid var(--rule); }
+@media (max-width: 860px) { .side .feed { contain: none; max-height: 360px; } }
+.chart { display: block; width: 100%; height: 170px; overflow: visible; }
+.chart text { font: 12px var(--font); fill: var(--ink-3); font-variant-numeric: tabular-nums; }
+.stats { display: grid; grid-template-columns: 1.3fr 1fr 1fr 2fr; gap: 16px 32px; margin: 16px 0 0; padding-top: 12px; border-top: 1px solid var(--rule); }
+@media (max-width: 600px) { .stats { grid-template-columns: 1fr 1fr; } }
+.stats > div { display: flex; flex-direction: column; min-width: 0; }
+.stats dt { color: var(--ink-3); font-size: 13.5px; }
+.stats dt .d { margin-right: 5px; }
+.stats dd { margin: 0; font-size: 20px; font-weight: 600; font-variation-settings: "wdth" 85; font-variant-numeric: tabular-nums; }
+.stats dd small { font-size: 14px; font-weight: 500; color: var(--ink-2); margin-left: 4px; font-variation-settings: "wdth" 100; }
+.stats svg { display: block; width: 100%; height: 26px; margin-top: 8px; overflow: visible; }
+.stats svg text { font: 11.5px var(--font); fill: var(--ink-3); }
+.empty { color: var(--ink-3); padding: 7px 0; }
+
+.feed { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow-y: auto; }
+.feed li { display: grid; grid-template-columns: 62px 1fr; gap: 12px; padding: 7px 0; border-top: 1px solid var(--rule); font-size: 14px; }
+.feed time { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.feed .win { color: var(--yours); font-weight: 650; }
+.feed .warn { color: var(--warn); font-weight: 600; }
+.feed .crit { color: var(--crit); font-weight: 600; }
+.feed .msg { color: var(--ink-2); overflow-wrap: anywhere; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; font-weight: 500; color: var(--ink-3); padding: 7px 12px 7px 0; border-top: 1px solid var(--rule); }
+td { padding: 7px 12px 7px 0; border-top: 1px solid var(--rule); font-variant-numeric: tabular-nums; }
+th:last-child, td:last-child { text-align: right; padding-right: 0; }
+
+#tip { position: fixed; z-index: 10; pointer-events: none; background: var(--ink); color: var(--paper); border-radius: 6px; padding: 7px 10px; font-size: 13px; line-height: 1.4; white-space: pre-line; max-width: 260px; opacity: 0; }
+#tip b { display: block; font-weight: 650; }
+#tip.on { opacity: 1; }
+</style>
+</head>
+<body>
+<header class="wrap top">
+  <p class="net"><svg class="logo" width="24" height="26" viewBox="0 0 24 26" aria-hidden="true"><rect x="0" y="3" width="3.4" height="20" rx="1" fill="var(--v1)"/><rect x="5" y="3" width="3.4" height="15.0" rx="1" fill="var(--v1)"/><rect x="5" y="18.8" width="3.4" height="4.2" rx="1" fill="var(--v2)"/><rect x="10" y="3" width="3.4" height="10.0" rx="1" fill="var(--v1)"/><rect x="10" y="13.8" width="3.4" height="9.2" rx="1" fill="var(--v2)"/><rect x="15" y="3" width="3.4" height="5.0" rx="1" fill="var(--v1)"/><rect x="15" y="8.8" width="3.4" height="14.2" rx="1" fill="var(--v2)"/><rect x="20" y="3" width="3.4" height="20" rx="1" fill="var(--v2)"/></svg>Testnet monitor<span class="id" id="network">connecting…</span></p>
+  <ul class="health" id="health" aria-label="Problems"></ul>
+  <!-- Party popper icon from Lucide (lucide.dev), ISC License -->
+  <button class="icon-btn" id="confetti-toggle" type="button" aria-label="Confetti on wins" aria-pressed="true">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M5.8 11.3 2 22l10.7-3.79"/><path d="M4 3h.01"/><path d="M22 8h.01"/><path d="M15 2h.01"/><path d="M22 20h.01"/>
+      <path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 10"/>
+      <path d="m22 13-.82-.33c-.86-.34-1.82.2-1.98 1.11c-.11.7-.72 1.22-1.43 1.22H17"/>
+      <path d="m11 2 .33.82c.34.86-.2 1.82-1.11 1.98C9.52 4.9 9 5.52 9 6.23V7"/>
+      <path d="M11 13c1.93 1.93 2.83 4.17 2 5-.83.83-3.07-.07-5-2-1.93-1.93-2.83-4.17-2-5 .83-.83 3.07.07 5 2Z"/>
+      <path class="slash" d="M3 3 21 21" stroke-width="2.2"/>
+    </svg>
+  </button>
+</header>
+
+<section class="hero" aria-labelledby="hero-label">
+  <div class="wrap">
+    <p class="hero-label" id="hero-label"></p>
+    <p class="countdown" id="cd"></p>
+    <p class="hero-caption" id="hero-caption"></p>
+    <div class="ribbon" id="ribbon"></div>
+  </div>
+</section>
+
+<main class="wrap">
+  <section class="cols figures">
+    <div id="fig-farm"></div>
+    <div id="fig-network"></div>
+    <div id="fig-wallet"></div>
+  </section>
+  <section class="cols lower">
+    <div class="span2">
+      <div class="head"><h2>Plots passing the filter</h2><span class="key"><span><span style="color:var(--v1)">◆</span> v1 proof</span><span><span style="color:var(--v2)">◆</span> v2 quality</span></span></div>
+      <div id="sp-chart"></div>
+      <dl class="stats" id="sp-stats"></dl>
+    </div>
+    <div class="side">
+      <div class="head"><h2>Events</h2></div>
+      <ol class="feed" id="feed"></ol>
+    </div>
+  </section>
+</main>
+<div id="tip" role="tooltip"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmt = (n) => Number(n).toLocaleString();
+let state = null, lastOk = 0, countdownTarget = null, ribbonIntro = true;
+
+function bytes(b) {
+  if (b == null) return ["–", ""];
+  const u = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
+  let i = 0; while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+  return [b >= 100 ? b.toFixed(0) : b.toFixed(1), u[i]];
+}
+const bytesStr = (b) => bytes(b).join(" ");
+const clock = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+// "11 min" as number + unit, with an optional suffix on the unit ("37 min ago")
+function durationNum(sec, suffix = "") {
+  const m = duration(sec).match(/^([\d.]+) (.*)$/);
+  return m ? num(m[1], m[2] + suffix) : num("–");
+}
+function duration(sec) {
+  if (sec == null || !isFinite(sec)) return "–";
+  const m = sec / 60;
+  if (m < 90) return `${Math.max(1, Math.round(m))} min`;
+  const h = m / 60;
+  return h < 48 ? `${h.toFixed(1)} hours` : `${(h / 24).toFixed(1)} days`;
+}
+function whenPhrase(t) {
+  const d = new Date(t * 1000), now = new Date();
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const days = Math.round((new Date(d.toDateString()) - new Date(now.toDateString())) / 864e5);
+  if (days === 0) return `around ${time} ${d.getHours() >= 18 ? "tonight" : "today"}`;
+  if (days === 1) return `around ${time} tomorrow`;
+  return `around ${time} on ${d.toLocaleDateString([], { weekday: "long" })}`;
+}
+
+/* ---------- health ---------- */
+function renderHealth() {
+  const s = state, sv = s.services, items = [];
+  const fresh = Date.now() / 1000 - lastOk < 8;
+  if (!fresh) items.push(["crit", "Dashboard lost its connection to the server"]);
+  if (!sv.node || !s.node) items.push(["crit", "Node offline"]);
+  else if (!s.node.synced) items.push(["warn", s.node.sync_mode ? `Node syncing ${fmt(s.node.height)} of ${fmt(s.node.sync_tip)}` : "Node not synced"]);
+  else items.push(["ok", "Node synced"]);
+  const f = s.farm;
+  if (!sv.farmer) items.push(["crit", "Farmer offline"]);
+  else if (!f || !f.plots) items.push(["warn", "Farmer has no plots"]);
+  else items.push(["ok", "Farmer running"]);
+  if (f && (f.failed || f.no_key || f.duplicates)) {
+    items.push(["warn", [f.failed && `${f.failed} plots failed to open`, f.no_key && `${f.no_key} plots missing keys`, f.duplicates && `${f.duplicates} duplicate plots`].filter(Boolean).join(", ")]);
+  }
+  const v2plots = f?.by_version?.v2.plots || 0;
+  if (sv.solver) items.push(["ok", "Solver connected"]);
+  else items.push([v2plots ? "crit" : "ok", v2plots ? "Solver offline, so v2 plots can't win" : "Solver off"]);
+  const nodes = s.peers.filter((p) => p.type === "full node");
+  const peerTip = nodes.map((p) => `${p.host}:${p.port}  at ${p.height == null ? "–" : fmt(p.height)}`).join("\n");
+  if (sv.node) items.push(nodes.length ? ["ok", `${nodes.length} peer${nodes.length === 1 ? "" : "s"}`, "Full node peers", peerTip] : ["warn", "No peers"]);
+  if (!sv.wallet || !s.wallet) items.push(["warn", "Wallet offline"]);
+  else items.push([s.wallet.synced ? "ok" : "warn", s.wallet.synced ? "Wallet synced" : "Wallet syncing"]);
+  $("health").innerHTML = items.filter(([cls]) => cls !== "ok").map(([cls, text, tipTitle, tipBody]) =>
+    `<li class="${cls}"${tipBody ? ` data-tip-title="${esc(tipTitle)}" data-tip="${esc(tipBody)}"` : ""}>${cls === "warn" ? "▲ " : cls === "crit" ? "✕ " : ""}${esc(text)}</li>`).join("");
+}
+
+/* ---------- hero ---------- */
+function countdownHtml(sec) {
+  sec = Math.max(0, Math.round(sec));
+  const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  const p = (n) => String(n).padStart(2, "0"), c = `<span class="c">:</span>`;
+  return (d ? `<span class="d">${d}d</span>` : "") + `${d ? p(h) : h}${c}${p(m)}${c}${p(s)}`;
+}
+function tick() { if (countdownTarget) $("cd").innerHTML = countdownHtml(countdownTarget - Date.now() / 1000); }
+
+function renderHero() {
+  const f = state.fork, node = state.node;
+  if (!f || !node) { $("hero-label").textContent = "Waiting for the node"; $("cd").textContent = "–"; $("hero-caption").textContent = ""; countdownTarget = null; return; }
+  const h = node.height;
+  if (h < f.height) {
+    countdownTarget = f.eta;
+    $("hero-label").textContent = "Hard fork in";
+    $("hero-caption").innerHTML = `<b class="n">${fmt(f.height - h)}</b> blocks to go, ${whenPhrase(f.eta)}`;
+  } else if (h < f.v1_cutoff) {
+    countdownTarget = f.cutoff_eta;
+    $("hero-label").textContent = "v1 plots stop winning in";
+    $("hero-caption").innerHTML = `<b class="n">${fmt(f.v1_cutoff - h)}</b> blocks to the v1 cut-off, ${whenPhrase(f.cutoff_eta)}`;
+  } else {
+    countdownTarget = null;
+    $("hero-label").textContent = "Hard fork complete";
+    $("cd").textContent = "v2 only";
+    $("hero-caption").innerHTML = `v1 proofs stopped counting at block <b class="n">${fmt(f.v1_cutoff)}</b>`;
+  }
+  tick();
+  renderRibbon();
+}
+
+function renderRibbon() {
+  const el = $("ribbon"), f = state.fork, seq = state.chain.seq, peak = state.node.height;
+  const W = el.clientWidth || 900, step = W < 600 ? 3 : 4, bw = step - 1, nb = Math.floor(W / step);
+  const top = 20, bh = 64, base = top + bh, H = base + 36;
+  const D = Math.max(f.v1_cutoff * 1.1, (peak + 1) * 1.04), bs = Math.ceil(D / nb);
+  const x = (height) => (height / bs) * step, endX = nb * step;
+  const ours = new Set(state.chain.ours), lastBin = Math.floor(peak / bs);
+  let bars = "", hits = "";
+  for (let i = 0; i <= lastBin; i++) {
+    const s = i * bs, e = Math.min(s + bs, peak + 1);
+    let v1 = 0, v2 = 0, mine = 0;
+    for (let k = s; k < e; k++) { const c = seq[k]; if (c === "1") v1++; else if (c === "2") v2++; if (ours.has(k)) mine++; }
+    const X = i * step, hgt = i === lastBin ? Math.max(6, bh * (e - s) / bs) : bh, n = v1 + v2;
+    const rect = (y, h, fill) => h > 0 ? `<rect${i === lastBin ? ` class="edge"` : ""} x="${X}" y="${y}" width="${bw}" height="${h}" fill="${fill}" style="--i:${i}"/>` : "";
+    if (n) {
+      const h2 = hgt * v2 / n;
+      bars += rect(base - hgt, hgt - h2, "var(--v1)") + rect(base - h2, h2, "var(--v2)");
+    } else {
+      bars += rect(base - hgt, hgt, "var(--faint)");
+    }
+    const title = e - s === 1 ? `Block ${fmt(s)}` : `Blocks ${fmt(s)}–${fmt(e - 1)}`;
+    const body = `v1 ${v1}, v2 ${v2}${mine ? `\nYou won ${mine}` : ""}`;
+    hits += `<rect x="${X - 0.5}" y="${top}" width="${step}" height="${bh}" fill="transparent" data-tip-title="${title}" data-tip="${esc(body)}"/>`;
+  }
+
+  const fx = x(f.height), cx = x(f.v1_cutoff), nowX = x(peak + 1);
+  let regions = "";
+  if (nowX < endX) regions += `<line x1="${nowX + 2}" x2="${endX}" y1="${base - 0.5}" y2="${base - 0.5}" stroke="var(--rule)"/>`;
+  const phaseStart = Math.max(fx, nowX + 2);
+  if (cx > phaseStart) {
+    regions += `<rect x="${phaseStart}" y="${top}" width="${cx - phaseStart}" height="${bh}" fill="url(#hatch)"/>`;
+    if (cx - phaseStart > 130) regions += regionLabel((phaseStart + cx) / 2, top + bh / 2, "v1 phasing out");
+  }
+  const v2Start = Math.max(cx, nowX + 2);
+  if (endX > v2Start) {
+    regions += `<rect x="${v2Start}" y="${top}" width="${endX - v2Start}" height="${bh}" fill="var(--v2)" fill-opacity=".16"/>`;
+    if (endX - v2Start > 64) regions += `<text class="region" x="${(v2Start + endX) / 2}" y="${top + bh / 2 + 4}" text-anchor="middle">v2 only</text>`;
+  }
+
+  const ly = base + 26;
+  let marks = "";
+  const nowLabelW = 86;
+  const nowAnchorEnd = nowX > nowLabelW;
+  const nowLeft = nowAnchorEnd ? nowX - nowLabelW : nowX, nowRight = nowAnchorEnd ? nowX : nowX + nowLabelW;
+  // Labels go below the ribbon, or above it when they'd collide with "Now" or each other; if neither fits, the line stays unlabelled.
+  const taken = { [ly]: [[nowLeft, nowRight]], [top - 10]: [] };
+  const fits = (y, lx, w) => taken[y].every(([l, r]) => lx > r + 12 || lx + w < l - 12);
+  for (const [mx, label, w] of [[fx, `Fork at ${fmt(f.height)}`, 100], [cx, `v1 cut-off at ${fmt(f.v1_cutoff)}`, 136]]) {
+    marks += `<line x1="${mx}" x2="${mx}" y1="${top - 6}" y2="${base + 8}" stroke="var(--ink)" stroke-width="1.5"/>`;
+    const anchorEnd = mx + w > W;
+    const lx = anchorEnd ? mx - w : mx;
+    const ty = [ly, top - 10].find((y) => fits(y, lx, w));
+    if (ty === undefined) continue;
+    taken[ty].push([lx, lx + w]);
+    marks += `<text x="${anchorEnd ? mx : mx + 6}" y="${ty}" text-anchor="${anchorEnd ? "end" : "start"}">${label}</text>`;
+  }
+  marks += `<text class="strong" x="${nowAnchorEnd ? nowX - 4 : nowX}" y="${ly}" text-anchor="${nowAnchorEnd ? "end" : "start"}">Now ${fmt(peak)}</text>`;
+
+  el.innerHTML = `<svg width="${W}" height="${H}" class="${ribbonIntro ? "intro" : ""}" role="img"
+      aria-label="Chain from genesis to block ${fmt(peak)}, with the hard fork at ${fmt(f.height)} and the v1 cut-off at ${fmt(f.v1_cutoff)}">
+    <defs><pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="7" height="7" fill="var(--v2)" fill-opacity=".06"/><line x1="0" y1="0" x2="0" y2="7" stroke="var(--rule)" stroke-width="2.5"/></pattern></defs>
+    ${regions}<g class="bars">${bars}</g>${marks}${hits}</svg>`;
+  ribbonIntro = false;
+}
+function regionLabel(cx, cy, text) {
+  const w = text.length * 6.6 + 16;
+  return `<rect x="${cx - w / 2}" y="${cy - 11}" width="${w}" height="22" rx="4" fill="var(--band)"/><text class="region" x="${cx}" y="${cy + 4}" text-anchor="middle">${text}</text>`;
+}
+
+/* ---------- figures ---------- */
+function renderFigures() {
+  const { farm, node, wallet, chain, history } = state;
+  const bv = farm?.by_version;
+  const versionRow = (v) => { if (!bv) return ""; const [n, u] = bytes(bv[v].size); return `<dt><i class="sw" style="background:var(--${v})"></i>${v}</dt><dd>${num(fmt(bv[v].plots), plural(bv[v].plots, "plot"))}<i class="sep">·</i>${num(n, u)}</dd>`; };
+  $("fig-farm").innerHTML = `<div class="head"><h2>Your farm</h2></div>
+    <div class="bigrow"><p class="big n">${farm ? fmt(farm.plots) : "–"}<small>plots</small></p></div>
+    <dl class="facts">${versionRow("v1")}${versionRow("v2")}
+      <dt>Share</dt><dd>${num(farm?.share != null ? (farm.share * 100).toFixed(2) : "–", "%")}</dd>
+      <dt>Time to win</dt><dd>${durationNum(farm?.etw)}</dd></dl>`;
+
+  const space = bytes(node?.space);
+  $("fig-network").innerHTML = `<div class="head"><h2>Network</h2></div>
+    <div class="bigrow"><p class="big n">${space[0]}<small>${space[1]}</small></p>${sparkline(history)}</div>
+    <dl class="facts">${["v1", "v2"].map((v) => { const n = chain.mix[v] || 0; return `<dt><i class="sw" style="background:var(--${v})"></i>${v}</dt><dd>${num(fmt(n), plural(n, "block"))}</dd>`; }).join("")}
+      <dt>Height</dt><dd>${num(node ? fmt(node.height) : "–")}</dd></dl>`;
+
+  const txch = wallet ? wallet.confirmed / 1e12 : null;
+  const pending = wallet && wallet.unconfirmed !== wallet.confirmed ? `<dt>Pending</dt><dd>${num(fmt((wallet.unconfirmed - wallet.confirmed) / 1e12), "TXCH")}</dd>` : "";
+  $("fig-wallet").innerHTML = `<div class="head"><h2>Rewards</h2></div>
+    <div class="bigrow"><p class="big n">${txch == null ? "–" : txch.toLocaleString(undefined, { maximumFractionDigits: 4 })}<small>TXCH</small></p></div>
+    <dl class="facts">${pending}
+      ${["v1", "v2"].map((v) => { const n = chain.ours_by_kind[v]; return `<dt><i class="sw" style="background:var(--${v})"></i>${v}</dt><dd>${num(fmt(n), plural(n, "block"))}</dd>`; }).join("")}
+      <dt>Last win</dt><dd>${!chain.ours.length ? num("–", "none yet") : chain.last_win_t ? durationNum(state.now - chain.last_win_t, " ago") : num(fmt(chain.ours[chain.ours.length - 1]), "block")}</dd></dl>`;
+}
+// A fact value: the number large, its unit small after it.
+const num = (n, unit = "") => `<b>${n}</b><span>${unit}</span>`;
+const plural = (n, word) => `${word}${n === 1 ? "" : "s"}`;
+function sparkline(hist) {
+  if (hist.length < 4) return "";
+  const vals = hist.map((p) => p.space), lo = Math.min(...vals), hi = Math.max(...vals), span = hi - lo || 1;
+  const t0 = hist[0].t, t1 = hist[hist.length - 1].t;
+  const pts = hist.map((p) => `${((p.t - t0) / (t1 - t0 || 1)) * 100},${36 - ((p.space - lo) / span) * 32}`).join(" ");
+  const tip = `Low ${bytesStr(lo)}\nHigh ${bytesStr(hi)}`;
+  return `<svg class="spark" viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-label="Network space since ${clock(t0)}">
+    <polyline points="${pts}" fill="none" stroke="var(--ink-2)" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+    <rect width="100" height="40" fill="transparent" data-tip-title="Since ${clock(t0)}" data-tip="${esc(tip)}"/></svg>`;
+}
+
+/* ---------- signage points ---------- */
+function renderSp() {
+  const el = $("sp-chart"), sps = state.sps, T = state.sp_totals;
+  if (!sps.length) { el.innerHTML = `<p class="empty">No signage points yet. They arrive about every 9 seconds once the farmer is connected.</p>`; $("sp-stats").innerHTML = ""; return; }
+  const W = el.clientWidth || 600, H = 170, L = 0, R = 0, Tp = 0.5, B = 22;
+  const maxE = Math.max(1, ...sps.map((s) => s.eligible));
+  const stepY = maxE <= 4 ? 1 : Math.ceil(maxE / 4);
+  const topV = Math.ceil(maxE / stepY) * stepY;
+  const y = (v) => Tp + (H - Tp - B) * (1 - v / topV);
+  const n = Math.max(sps.length, 60), slot = (W - L - R) / n, bw = Math.max(1.5, Math.min(slot * 0.7, slot - 1));
+  const x0 = L + (n - sps.length) * slot;
+  let g = "", labels = "", bars = "", hits = "";
+  for (let v = 0; v <= topV; v += stepY) g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="${v ? "var(--faint)" : "var(--rule)"}"/>`, labels += v ? `<rect x="0" y="${y(v) + 3}" width="${v === 1 ? 40 : 48}" height="17" fill="var(--paper)"/><text x="0" y="${y(v) + 16}">${v} plot${v === 1 ? "" : "s"}</text>` : "";
+  sps.forEach((s, i) => {
+    const X = x0 + i * slot;
+    if (s.eligible) bars += `<rect x="${X}" y="${y(s.eligible)}" width="${bw}" height="${y(0) - y(s.eligible)}" rx="${Math.min(2, bw / 2)}" fill="var(--ink-2)"/>`;
+    let my = y(s.eligible) - 9;
+    for (const [v, color] of [["v1", "var(--v1)"], ["v2", "var(--v2)"]]) {
+      if (s[v] ?? (v === "v1" ? s.proofs : 0)) { bars += `<path d="M${X + bw / 2},${my - 5} l5,5 l-5,5 l-5,-5 z" fill="${color}" stroke="var(--paper)" stroke-width="1.5"/>`; my -= 12; }
+    }
+    const tip = `${s.eligible} of ${s.plots} plots passed${s.v1 ? `\n${s.v1} v1 proof` : ""}${s.v2 ? `\n${s.v2} v2 quality` : ""}\nLookup ${(s.s * 1000).toFixed(1)} ms`;
+    hits += `<rect x="${X - (slot - bw) / 2}" y="${Tp - 12}" width="${slot}" height="${H - Tp - B + 12}" fill="transparent" data-tip-title="${clock(s.t)}" data-tip="${esc(tip)}"/>`;
+  });
+  const mins = Math.round((sps[sps.length - 1].t - sps[0].t) / 60);
+  el.innerHTML = `<svg class="chart" width="${W}" height="${H}" role="img" aria-label="Plots passing the filter for each of the last ${sps.length} signage points">
+    ${g}${bars}${labels}${hits}<text x="${x0}" y="${H - 4}">${mins} min ago</text><text x="${W - R}" y="${H - 4}" text-anchor="end">now</text></svg>`;
+  const pass = T.count ? T.passed / T.count : 0, expected = state.farm?.expected_pass;
+  const lookups = sps.map((s) => s.s);
+  $("sp-stats").innerHTML = `
+    <div><dt>Passed filter</dt><dd>${(pass * 100).toFixed(1)}%</dd>${passMeter(pass, expected, T.count)}</div>
+    <div><dt><span class="d" style="color:var(--v1)">◆</span>v1 proofs</dt><dd>${fmt(T.v1 ?? T.proofs)}</dd></div>
+    <div><dt><span class="d" style="color:var(--v2)">◆</span>v2 qualities</dt><dd>${fmt(T.v2 ?? 0)}</dd></div>
+    <div><dt>Lookup time</dt><dd>${ms(T.avg_s)}<small>avg</small> ${ms(T.max_s)}<small>max</small></dd>${lookupStrip(lookups, T.avg_s)}</div>`;
+}
+const ms = (sec) => sec >= 1 ? `${sec.toFixed(1)} s` : `${(sec * 1000).toFixed(sec < 0.01 ? 1 : 0)} ms`;
+
+// Actual pass rate as a bar on a track, with a tick where your plots should land on average.
+function passMeter(pass, expected, count) {
+  if (!expected) return "";
+  const max = Math.max(expected * 2, pass * 1.1), w = 100, x = (v) => Math.min(1, v / max) * w;
+  const tip = `${(pass * 100).toFixed(1)}% of ${fmt(count)} signage points\nExpected ${(expected * 100).toFixed(1)}% for your plots at this height`;
+  return `<svg viewBox="0 0 100 26" preserveAspectRatio="none" role="img" aria-label="Passed filter ${(pass * 100).toFixed(1)}%, expected ${(expected * 100).toFixed(1)}%">
+    <rect x="0" y="5" width="${w}" height="8" rx="4" fill="var(--faint)"/>
+    <rect x="0" y="5" width="${Math.max(x(pass), pass ? 4 : 0)}" height="8" rx="4" fill="var(--ink-2)"/>
+    <line x1="${x(expected)}" x2="${x(expected)}" y1="1" y2="17" stroke="var(--ink)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+    <rect width="100" height="26" fill="transparent" data-tip-title="Passed filter" data-tip="${esc(tip)}"/></svg>`;
+}
+// Every recent lookup as a faint tick on a log scale up to the harvester's 8 s warning, the average in ink.
+function lookupStrip(vals, avg) {
+  if (!vals.length) return "";
+  const lo = Math.log10(0.0001), hi = Math.log10(10), limit = 8;
+  const x = (sec) => ((Math.log10(Math.max(sec, 0.0001)) - lo) / (hi - lo)) * 100;
+  const ticks = vals.map((v) => `<line x1="${x(v)}" x2="${x(v)}" y1="3" y2="15" stroke="var(--ink-2)" stroke-opacity=".3" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`).join("");
+  const axis = [[0.001, "1 ms"], [0.1, "100 ms"]].map(([v, t]) => `<text x="${x(v)}%" y="26" text-anchor="middle">${t}</text>`).join("");
+  return `<svg role="img" aria-label="Lookup times of the last ${vals.length} signage points, average ${ms(avg)}, slow above ${limit} seconds">
+    <svg viewBox="0 0 100 18" preserveAspectRatio="none" width="100%" height="18" overflow="visible">
+      <rect x="0" y="8" width="100" height="2" fill="var(--faint)"/>
+      <rect x="${x(limit)}" y="0" width="${100 - x(limit)}" height="18" fill="var(--warn)" fill-opacity=".14"/>
+      ${ticks}
+      <line x1="${x(avg)}" x2="${x(avg)}" y1="0" y2="18" stroke="var(--ink)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+      <rect width="100" height="18" fill="transparent" data-tip-title="Lookup time" data-tip="${esc(`${vals.length} signage points\nAverage ${ms(avg)}, slowest ${ms(Math.max(...vals))}\nThe harvester warns above ${limit} s`)}"/>
+    </svg>${axis}<text x="100%" y="26" text-anchor="end">${limit} s</text></svg>`;
+}
+
+/* ---------- events and peers ---------- */
+function renderFeed() {
+  const ev = state.events;
+  $("feed").innerHTML = ev.length ? ev.map((e) => {
+    let what;
+    if (e.kind === "win") what = `<span class="win">${esc(e.text)}</span>`;
+    else if (e.kind === "proof") what = `Found ${esc(e.text)}`;
+    else if (e.kind === "warning") what = `<span class="warn">▲ Warning</span> <span class="msg">${esc(e.text)}</span>`;
+    else what = `<span class="crit">✕ Error</span> <span class="msg">${esc(e.text)}</span>`;
+    return `<li><time>${e.t ? clock(e.t) : ""}</time><span>${what}</span></li>`;
+  }).join("") : `<li><time></time><span class="msg">No proofs or warnings yet.</span></li>`;
+}
+/* ---------- confetti ---------- */
+const toggle = $("confetti-toggle");
+let confettiOn = true, lastWins = null;
+try { confettiOn = localStorage.getItem("confetti") !== "off"; } catch {}
+function syncToggle() {
+  toggle.setAttribute("aria-pressed", String(confettiOn));
+  toggle.setAttribute("data-tip-title", "Confetti on wins");
+  toggle.setAttribute("data-tip", confettiOn ? "On. Click to turn off." : "Off. Click to turn on.");
+}
+syncToggle();
+toggle.addEventListener("click", () => {
+  confettiOn = !confettiOn;
+  syncToggle();
+  try { localStorage.setItem("confetti", confettiOn ? "on" : "off"); } catch {}
+  if (confettiOn) celebrate(0.35);  // a small preview of what a win looks like
+});
+function celebrate(scale = 1) {
+  if (typeof confetti !== "function") return;
+  const css = getComputedStyle(document.documentElement);
+  const colors = ["--v1", "--v2", "--yours", "--ink"].map((v) => css.getPropertyValue(v).trim());
+  // Two cannons in the bottom corners, aimed inward. A particle travels about
+  // startVelocity / (1 - decay) px, so size the launch to reach across the window.
+  const decay = 0.92, full = scale >= 1;
+  const reach = Math.hypot(innerWidth * 0.75, innerHeight) * (full ? 1 : 0.5);
+  const velocity = Math.min(150, reach * (1 - decay));
+  const base = { colors, decay, gravity: 0.9, ticks: 340, scalar: 1.1, spread: 50, disableForReducedMotion: true };
+  const fire = (count) => {
+    confetti({ ...base, particleCount: count, angle: 58 + Math.random() * 10, startVelocity: velocity * (0.85 + Math.random() * 0.25), origin: { x: 0, y: 1 } });
+    confetti({ ...base, particleCount: count, angle: 112 + Math.random() * 10, startVelocity: velocity * (0.85 + Math.random() * 0.25), origin: { x: 1, y: 1 } });
+  };
+  if (!full) { fire(45); return; }  // preview
+  const end = Date.now() + 1000;
+  (function frame() { fire(5); if (Date.now() < end) requestAnimationFrame(frame); })();
+}
+function checkForWin() {
+  // Only compare once the server has loaded the whole chain; a backfill after a restart isn't a win.
+  const complete = state.node && state.chain.count >= state.node.height + 1;
+  if (!complete) { lastWins = null; return; }
+  const wins = state.chain.ours.length;
+  if (lastWins != null && wins > lastWins && confettiOn) celebrate(1);
+  lastWins = wins;
+}
+
+/* ---------- loop ---------- */
+function render() {
+  if (!state?.ready) return;
+  $("network").textContent = state.network;
+  document.title = `Testnet monitor · ${state.network}`;
+  renderHealth(); renderHero(); renderFigures(); renderSp(); renderFeed(); checkForWin();
+}
+async function poll() {
+  try { const r = await fetch("/api/state", { cache: "no-store" }); state = await r.json(); lastOk = Date.now() / 1000; render(); }
+  catch { if (state) renderHealth(); }
+}
+
+const tip = $("tip");
+document.addEventListener("mousemove", (ev) => {
+  const t = ev.target.closest?.("[data-tip]");
+  if (!t) { tip.classList.remove("on"); return; }
+  tip.innerHTML = `<b>${esc(t.getAttribute("data-tip-title"))}</b>${esc(t.getAttribute("data-tip"))}`;
+  tip.classList.add("on");
+  const r = tip.getBoundingClientRect();
+  let x = ev.clientX + 14, y = ev.clientY + 16;
+  if (x + r.width > innerWidth - 8) x = ev.clientX - r.width - 14;
+  if (y + r.height > innerHeight - 8) y = ev.clientY - r.height - 16;
+  tip.style.left = `${Math.max(8, x)}px`; tip.style.top = `${Math.max(8, y)}px`;
+});
+
+poll();
+setInterval(poll, 2000);
+setInterval(tick, 1000);
+let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(render, 120); });
+</script>
+</body>
+</html>
