@@ -1,0 +1,27 @@
+name: native
+
+on:
+  push:
+    branches: [main]
+    paths: ["native/**", ".github/workflows/native.yml"]
+  pull_request:
+    paths: ["native/**", ".github/workflows/native.yml"]
+
+jobs:
+  check:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: native
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native
+      - run: cargo fmt --check
+      - run: cargo clippy --release -- -D warnings
+      - run: cargo test --release
+      - run: cargo build --release

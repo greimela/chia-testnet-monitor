@@ -33,6 +33,12 @@ That opens http://127.0.0.1:8899. Use `--port 9000` if 8899 is taken, and Ctrl-C
 
 When you move to a new testnet, restart it with the new `CHIA_ROOT`.
 
+## Native app (optional)
+
+`native/` is a GPUI port of the dashboard: same data and layout, one small process instead of a browser tab. It reads
+the same `server.py`, so start that first, then `cd native && cargo run --release`. It needs a Rust toolchain
+and is only tested on macOS so far; see [native/README.md](native/README.md) for details and benchmarks.
+
 ## On Windows
 
 `pos2.ps1` runs a whole testnet setup from this folder, without WSL: the node, farmer, harvester,

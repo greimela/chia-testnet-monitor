@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- macOS icon grid: 824px rounded square centred in 1024 -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#f2f4ef"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="none" stroke="#13241a" stroke-opacity=".08" stroke-width="2"/>
+  <!-- The logo from index.html (viewBox 0 0 24 26), scaled 17x and centred -->
+  <g transform="translate(308 291) scale(17)">
+    <rect x="0" y="3" width="3.4" height="20" rx="1" fill="#3d6bb3"/>
+    <rect x="5" y="3" width="3.4" height="15.0" rx="1" fill="#3d6bb3"/>
+    <rect x="5" y="18.8" width="3.4" height="4.2" rx="1" fill="#2e9b4e"/>
+    <rect x="10" y="3" width="3.4" height="10.0" rx="1" fill="#3d6bb3"/>
+    <rect x="10" y="13.8" width="3.4" height="9.2" rx="1" fill="#2e9b4e"/>
+    <rect x="15" y="3" width="3.4" height="5.0" rx="1" fill="#3d6bb3"/>
+    <rect x="15" y="8.8" width="3.4" height="14.2" rx="1" fill="#2e9b4e"/>
+    <rect x="20" y="3" width="3.4" height="20" rx="1" fill="#2e9b4e"/>
+  </g>
+</svg>
