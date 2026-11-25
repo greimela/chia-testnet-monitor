@@ -79,12 +79,19 @@ installed Chia app or `~\.chia\mainnet`. `Get-Help .\pos2.ps1 -Detailed` lists t
    ```powershell
    .\pos2.ps1 plot1 -n 2                     # v1 plots, k25, about 0.7 GB each
    .\pos2.ps1 plot2 -n 4                     # v2 plots, k28 strength 2, about 1 GB each
+   .\pos2.ps1 plotg -g 4                     # or a v2 group of 4 plots in one .gplot, with cpos
    .\pos2.ps1 start                          # everything, with the solver and monitor hidden in the background
    ```
 
    `.\pos2.ps1 dashboard` opens the monitor, `.\pos2.ps1 status` shows sync and farm, `.\pos2.ps1 stop`
    stops everything. Nothing restarts after a reboot; run `start` again. For a new testnet, repeat steps
    2 to 5; `.\pos2.ps1 use <old name>` switches back.
+
+   `plotg` needs `cpos.exe` from the cpos release zip in `.\cpos`, and takes any `cpos plot` option.
+   It plots on the CPU unless you pass `-d gpu`, because the GPU drivers need 8 GB of VRAM.
+
+   Edit `config.yaml` with an editor that saves UTF-8 without a BOM. Windows PowerShell 5.1's
+   `Set-Content -Encoding utf8` adds one, and Chia then saves the first setting under a garbled name.
 
 ## What it reads
 

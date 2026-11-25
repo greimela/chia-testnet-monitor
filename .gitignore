@@ -8,3 +8,4 @@ chia-blockchain/
 plots/
 network.txt
 fingerprint.txt
+cpos/

@@ -9,6 +9,7 @@ against the testnet root in network.txt, never against ~/.chia/mainnet.
   .\pos2.ps1 dashboard              open the testnet monitor (http://127.0.0.1:8899), starting it if needed
   .\pos2.ps1 plot1 [chia args]      create v1 plots in .\plots\v1 (default -k 25 -n 1), e.g. plot1 -n 4
   .\pos2.ps1 plot2 [chia args]      create v2 plots in .\plots\v2 (k28, -s 2, -n 1), e.g. plot2 -n 6
+  .\pos2.ps1 plotg [cpos args]      create v2 plot groups in .\plots\v2 with cpos (k28, -s 2, CPU), e.g. plotg -g 4 -n 1
   .\pos2.ps1 plotting [watch]       finished and in-progress plots ("watch" refreshes every 5 s)
   .\pos2.ps1 log                    follow debug.log
   .\pos2.ps1 chia <args...>         run any chia command against this testnet
@@ -56,8 +57,22 @@ switch ($Command) {
         & $Chia start farmer
         if (-not (Get-Helper "*$Bin*chia_solver*")) { Start-Process -FilePath (Join-Path $Bin "chia_solver.cmd") @Background }
         Start-Dashboard
-        Start-Sleep -Seconds 5
-        & $Chia rpc farmer connect_to_solver '{\"host\": \"localhost\", \"port\": 8666}'
+        # The farmer's RPC can take a while to come up, so keep trying for a minute.
+        $connected = $false
+        foreach ($try in 1..12) {
+            Start-Sleep -Seconds 5
+            if ("$(& $Chia rpc farmer connect_to_solver '{\"host\": \"localhost\", \"port\": 8666}' 2>&1)" -match '"success": true') { $connected = $true; break }
+        }
+        Write-Host $(if ($connected) { "Connected the farmer to the solver" } else { "Couldn't connect the farmer to the solver; run: .\pos2.ps1 chia rpc farmer connect_to_solver" })
+        # A new testnet folder's wallet starts on the first key, not the one the rewards go to.
+        if (Test-Path $KeyFile) {
+            $fingerprint = (Get-Content $KeyFile -TotalCount 1).Trim()
+            foreach ($try in 1..12) {
+                # wallet show logs the wallet in to the key it's given
+                if ("$(& $Chia wallet show -f $fingerprint 2>&1)" -match "Balances, fingerprint: $fingerprint") { Write-Host "Wallet on key $fingerprint"; break }
+                Start-Sleep -Seconds 5
+            }
+        }
         Write-Host "Dashboard: $DashUrl"
     }
     "stop" {
@@ -83,6 +98,25 @@ switch ($Command) {
         New-Item -ItemType Directory -Force $dir | Out-Null
         & $Chia plots add -d $dir | Out-Null  # farm each plot as soon as it's done, not after the whole batch
         & $Chia plots create2 @KeyArgs -d $dir @Rest
+    }
+    "plotg" {
+        # cpos makes v2 plot groups, one .gplot file per group; chia plots create2 only makes groups of 1.
+        $cpos = Join-Path $Here "cpos\cpos.exe"
+        if (-not (Test-Path $cpos)) { throw "Put cpos.exe from the cpos release zip in .\cpos" }
+        if (-not (Test-Path $KeyFile)) { throw "No key selected. Run: .\pos2.ps1 use <network_name> <fingerprint>" }
+        $keys = & $Chia keys show -f (Get-Content $KeyFile -TotalCount 1).Trim()
+        $farmerKey = (($keys | Select-String "Farmer public key") -split ":")[-1].Trim()
+        $address = (($keys | Select-String "First wallet address") -split ":")[-1].Trim()
+        $dir = Join-Path $Here "plots\v2"
+        $temp = Join-Path $Here "plots\temp"
+        New-Item -ItemType Directory -Force $dir, $temp | Out-Null
+        & $Chia plots add -d $dir | Out-Null
+        $defaults = @(
+            if ($Rest -notcontains "-k") { "-k", "28" }
+            if ($Rest -notcontains "-s") { "-s", "2" }
+            if ($Rest -notcontains "-d") { "-d", "cpu" }  # the GPU drivers need 8 GB of VRAM
+        )
+        & $cpos plot -f $farmerKey -a $address @defaults -e $temp @Rest $dir
     }
     "plotting" {
         do {

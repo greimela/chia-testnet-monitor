@@ -27,10 +27,13 @@ try:
     import yaml
     from chia_rs import PlotParam, ProofOfSpace
     from chia_rs.sized_bytes import bytes32
+    from chia_rs.sized_ints import uint8, uint16
 
     from chia.consensus.constants import replace_str_to_bytes
     from chia.consensus.default_constants import DEFAULT_CONSTANTS, update_testnet_overrides
+    from chia.consensus.pos_quality import _expected_plot_size
     from chia.types.blockchain_format.proof_of_space import (
+        calculate_base_plot_filter_bits,
         calculate_plot_filter_bits,
         calculate_prefix_bits,
         max_plot_strength,
@@ -215,6 +218,7 @@ def log_time(stamp: str) -> float:
 
 
 STATS_PATH = HERE / f"strength-stats-{CONFIG['selected_network']}.json"
+STATS_VERSION = 2
 SPS_PER_DAY = int(CONSTANTS.NUM_SPS_SUB_SLOT) * 86400 / int(CONSTANTS.SUB_SLOT_TIME_TARGET)
 GENESIS = CONSTANTS.GENESIS_CHALLENGE.hex()
 
@@ -246,17 +250,24 @@ class StrengthStats:
         self.ours: dict[str, list] = {}  # challenge prefix -> [signage points, passes, complete]
         self.theirs: dict[str, list] = {}  # challenge prefix -> [signage points, eligible plots], from the log
         self.current_prefix: str | None = None
+        self.since_height: int | None = None  # wins count from the block after this
         self.last_save = 0.0
         try:
             saved = json.loads(STATS_PATH.read_text())
-            self.counts, self.since = saved["counts"], saved["since"]
+            if saved.get("version") != STATS_VERSION:
+                # Counts from before expected proofs were tracked can't be compared with them; keep them aside.
+                STATS_PATH.replace(STATS_PATH.with_name(f"{STATS_PATH.stem}-before-v{STATS_VERSION}.json"))
+                raise KeyError("version")
+            self.counts, self.since, self.since_height = saved["counts"], saved["since"], saved["since_height"]
             self.seen_sps = dict.fromkeys(saved["seen_sps"])
             self.seen_proofs = dict.fromkeys(saved["seen_proofs"])
         except (OSError, ValueError, KeyError):
             pass
 
     def _c(self, cls: str) -> dict:
-        return self.counts.setdefault(cls, {"checks": 0, "locked": 0, "passes": 0, "expected": 0.0, "proofs": 0, "gb_sps": 0.0})
+        return self.counts.setdefault(
+            cls, {"checks": 0, "locked": 0, "passes": 0, "expected": 0.0, "proofs": 0, "expected_proofs": 0.0, "gb_sps": 0.0}
+        )
 
     def _prev(self, challenge: str) -> str | None:
         """Challenge of the sub-slot before the one with this challenge."""
@@ -282,6 +293,14 @@ class StrengthStats:
         t[1] += eligible
 
     def update(self, sps: list[dict], plots: list[dict], peak: int, last_tx: int) -> None:
+        if self.since_height is None:
+            # Skip the farmer's backlog from before counting began, so proofs and wins cover the same blocks.
+            self.since_height = peak
+            for entry in sps:
+                key = _hex(entry["signage_point"]["challenge_chain_sp"])
+                self.seen_sps[key] = None
+                self.seen_proofs.update(dict.fromkeys(f"{key}:{ident}" for ident, _ in entry.get("proofs", [])))
+            return
         for entry in sps:
             sp = entry["signage_point"]
             key = _hex(sp["challenge_chain_sp"])
@@ -293,17 +312,34 @@ class StrengthStats:
             if key in self.seen_sps:
                 continue
             self.seen_sps[key] = None
-            self._check_sp(_hex(sp["challenge_hash"]), key, int(sp["signage_point_index"]), plots, peak, last_tx)
+            self._check_sp(sp, key, plots, peak, last_tx)
         for d in (self.seen_sps, self.seen_proofs):
             for k in list(d)[: max(0, len(d) - 3000)]:
                 del d[k]
         if time.time() - self.last_save > 30:
             self.last_save = time.time()
             STATS_PATH.write_text(json.dumps({
-                "counts": self.counts, "since": self.since, "seen_sps": list(self.seen_sps), "seen_proofs": list(self.seen_proofs),
+                "version": STATS_VERSION, "counts": self.counts, "since": self.since, "since_height": self.since_height,
+                "seen_sps": list(self.seen_sps), "seen_proofs": list(self.seen_proofs),
             }))
 
-    def _check_sp(self, challenge: str, sp_hash: str, index: int, plots: list[dict], peak: int, last_tx: int) -> None:
+    @staticmethod
+    def _eligible_chance(p: dict, last_tx: int, difficulty: int, sp_interval_iters: int) -> float:
+        """Chance that a plot's proof, once it passes the filter, is good enough for a block.
+
+        As calculate_iterations_quality (chia/consensus/pot_iterations.py): required iters are difficulty times
+        DIFFICULTY_CONSTANT_FACTOR times a uniform random number, over the expected plot size, and the proof
+        counts when they fall below the signage point interval. v2 sizes include its strength compensation.
+        """
+        size = int(_expected_plot_size(p["param"], CONSTANTS))
+        if p["cls"] != "v1":
+            size <<= calculate_plot_filter_bits(last_tx, CONSTANTS, p["strength"]) - calculate_base_plot_filter_bits(last_tx, CONSTANTS)
+        return min(1.0, sp_interval_iters * size / (difficulty * int(CONSTANTS.DIFFICULTY_CONSTANT_FACTOR)))
+
+    def _check_sp(self, sp: dict, sp_hash: str, plots: list[dict], peak: int, last_tx: int) -> None:
+        challenge, index = _hex(sp["challenge_hash"]), int(sp["signage_point_index"])
+        difficulty = int(sp["difficulty"])
+        sp_interval_iters = int(sp["sub_slot_iters"]) // int(CONSTANTS.NUM_SPS_SUB_SLOT)
         passes, complete, fc = 0, True, None
         for p in plots:
             c = self._c(p["cls"])
@@ -329,6 +365,9 @@ class StrengthStats:
             c["checks"] += 1
             c["gb_sps"] += p["gb"]
             c["expected"] += 2.0 ** -bits
+            # Chia's own plot check expects one proof per filter pass (chia/plotting/check_plots.py), and a v2 group
+            # passes or fails as one, with one proof per plot in it.
+            c["expected_proofs"] += 2.0 ** -bits * p["count"] * self._eligible_chance(p, last_tx, difficulty, sp_interval_iters)
             c["passes"] += passed
             passes += passed
         prefix = challenge[:10]
@@ -357,9 +396,12 @@ class StrengthStats:
         for cls in classes:
             c = self._c(cls)
             row = {
-                **c, "cls": cls, "plots": sum(p["cls"] == cls for p in plots),
+                **c, "cls": cls, "plots": sum(p["count"] for p in plots if p["cls"] == cls),
                 "gb": sum(p["gb"] for p in plots if p["cls"] == cls),
                 "wins": sum(b["ours"] and b.get("cls") == cls for b in chain),
+                "wins_since": sum(
+                    b["ours"] and b.get("cls") == cls and self.since_height is not None and b["h"] > self.since_height for b in chain
+                ),
             }
             if cls == "v1":
                 row["state"] = "retired" if last_tx is not None and last_tx >= V1_CUTOFF else "farming"
@@ -378,7 +420,7 @@ class StrengthStats:
                     row["state"] = "farming"
             rows.append(row)
         return {
-            "rows": rows, "since": self.since, "sps_per_day": SPS_PER_DAY, "last_tx": last_tx, "fork": FORK_HEIGHT,
+            "rows": rows, "since": self.since, "since_height": self.since_height, "sps_per_day": SPS_PER_DAY, "last_tx": last_tx, "fork": FORK_HEIGHT,
             "max_strength": max_plot_strength(last_tx or 0, CONSTANTS), "check": self.check(),
         }
 
@@ -386,16 +428,31 @@ class StrengthStats:
 strength = StrengthStats()
 
 
+def plot_strength(plot: dict) -> int | None:
+    """Strength of a v2 plot group, or None for a v1 plot. Harvesters report it as its own field; older
+    builds reported v2 plots with a size of 0x80 | strength instead."""
+    if "strength" in plot:
+        return plot["strength"]
+    return plot["size"] & 0x7F if plot["size"] & 0x80 else None
+
+
+def plot_count(plot: dict) -> int:
+    """Plots in a harvester entry: a v2 group file holds group_size of them."""
+    return int(plot.get("group_size") or 1)
+
+
 def plots_for_stats(plot_list: dict | None) -> list[dict]:
     out = []
     for p in (plot_list or {}).get("plots", []):
-        v2 = bool(p["size"] & 0x80)
+        s = plot_strength(p)
         out.append({
-            "cls": f"s{p['size'] & 0x7F}" if v2 else "v1",
-            "strength": p["size"] & 0x7F if v2 else None,
-            "id": bytes32.fromhex(_hex(p["plot_id"])),
+            "cls": f"s{s}" if s is not None else "v1",
+            "strength": s,
+            # A v2 group passes the filter as one, by its group plot id.
+            "id": bytes32.fromhex(_hex(p.get("group_plot_id") or p["plot_id"])),
             "meta_group": int(p.get("meta_group") or 0),
-            "param": PlotParam.make_v1(p["size"]) if not v2 else None,
+            "param": PlotParam.make_v1(p["size"]) if s is None else PlotParam.make_v2(uint16(0), uint8(int(p.get("meta_group") or 0)), uint8(s)),
+            "count": plot_count(p),
             "gb": p["file_size"] / 1e9,
         })
     return out
@@ -405,10 +462,11 @@ def expected_pass(plots: list[dict], height: int) -> float:
     """Chance that at least one plot passes the filter at a signage point, at this height."""
     miss = 1.0
     for plot in plots:
-        if plot["size"] & 0x80:  # v2: 0x80 | strength, and only eligible from the fork
+        s = plot_strength(plot)
+        if s is not None:  # v2 is only eligible from the fork
             if height < FORK_HEIGHT:
                 continue
-            bits = calculate_plot_filter_bits(height, CONSTANTS, plot["size"] & 0x7F)
+            bits = calculate_plot_filter_bits(height, CONSTANTS, s)
         else:
             if height >= V1_CUTOFF:
                 continue
@@ -575,7 +633,9 @@ class Collector:
             t = near[0] if near else ts
             if near:
                 farmed.remove(t)
-            events.append({"t": t, "kind": "win", "text": f"Won block {b['h']:,} with a {b['kind']} plot"})
+            cls = b.get("cls") or ""
+            strength_note = f", strength {cls[1:]}" if cls.startswith("s") else ""
+            events.append({"t": t, "kind": "win", "text": f"Won block {b['h']:,} with a {b['kind']} plot{strength_note}"})
         return events
 
     # ---- main loop ----------------------------------------------------
@@ -626,7 +686,7 @@ class Collector:
             hs = harvesters["harvesters"]
             farm = {
                 "harvesters": len(hs),
-                "plots": sum(h["plots"] for h in hs),
+                "plots": sum(h.get("plot_count", h["plots"]) for h in hs),  # plot_count counts the plots in groups
                 "size": sum(h["total_plot_size"] for h in hs),
                 "effective": sum(h["total_effective_plot_size"] for h in hs),
                 "failed": sum(h["failed_to_open_filenames"] for h in hs),
@@ -635,8 +695,8 @@ class Collector:
             }
             by_version = {"v1": {"plots": 0, "size": 0}, "v2": {"plots": 0, "size": 0}}
             for plot in (plot_list or {}).get("plots", []):
-                v = "v2" if plot["size"] & 0x80 else "v1"  # v2 plots report 0x80 | strength
-                by_version[v]["plots"] += 1
+                v = "v1" if plot_strength(plot) is None else "v2"
+                by_version[v]["plots"] += plot_count(plot)
                 by_version[v]["size"] += plot["file_size"]
             farm["by_version"] = by_version if plot_list else None
             if plot_list and node:
@@ -712,7 +772,7 @@ class Collector:
         # Filter results per strength for any new signage points, against the newest transaction block.
         stat_plots = plots_for_stats(plot_list)
         last_tx = next((h for h in range(node["height"], max(-1, node["height"] - 50), -1) if self.blocks.get(h, {}).get("ts")), None) if node else None
-        if node and farmer_sps and plot_list and last_tx is not None:
+        if node and node["synced"] and farmer_sps and plot_list and last_tx is not None:  # count from where the farm can win
             strength.update(farmer_sps["signage_points"], stat_plots, node["height"], last_tx)
         strength_snapshot = strength.snapshot(stat_plots, chain, last_tx)
 
